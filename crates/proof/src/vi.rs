@@ -1,7 +1,13 @@
-//! Telling Vietnamese text apart from English, so a document typed in Vietnamese under the default
-//! English proofing language isn't covered in red underlines (as Word's "detect language
-//! automatically" does). There are no Vietnamese proofing tools yet, so Vietnamese text is treated
-//! like any language without them: no spelling or grammar marks.
+//! Vietnamese: telling Vietnamese text apart from English, so a document typed in Vietnamese under
+//! the default English proofing language is spelled as Vietnamese (as Word's "detect language
+//! automatically" does), and spelling it.
+//!
+//! Spelling is by rule, not by dictionary: every Vietnamese word is written as syllables, and a
+//! syllable is an onset (`ngh`, `tr`, `qu`…), a rhyme from the closed set of Vietnamese rhymes
+//! (`ương`, `oanh`, `uyêt`…) and at most one tone mark. The spelling rules on top: `k`, `gh` and
+//! `ngh` only before `i e ê y`, `c`, `g` and `ng` never before them, and a rhyme ending in a stop
+//! (`c ch p t`) takes only the acute or the dot below. That catches the common slips (`nghành`,
+//! `ngỉ`, `hoc`, leftover Telex keys like `tieengs`) without shipping a word list.
 //!
 //! The test is orthographic. Vietnamese writes most syllables with letters no other Latin-script
 //! language shares: the horn letters (`ơ ư`), `ĩ ũ`, and the tone-marked vowels of the Latin
@@ -38,6 +44,100 @@ pub fn looks_vietnamese(text: &str) -> bool {
     marked > 0 && (marked >= 2 || total <= 3) && marked * 6 >= total
 }
 
+/// Each vowel with its tones, in tone order: level, grave, acute, hook above, tilde, dot below.
+const VOWELS: [&str; 12] = ["aàáảãạ", "ăằắẳẵặ", "âầấẩẫậ", "eèéẻẽẹ", "êềếểễệ", "iìíỉĩị", "oòóỏõọ", "ôồốổỗộ", "ơờớởỡợ", "uùúủũụ", "ưừứửữự", "yỳýỷỹỵ"];
+
+const ONSETS: [&str; 27] = [
+    "ngh", "ng", "nh", "ch", "gh", "gi", "kh", "ph", "th", "tr", "qu", "b", "c", "d", "đ", "g", "h", "k", "l", "m", "n", "p", "r", "s", "t", "v", "x",
+];
+
+/// Every Vietnamese rhyme, without its tone.
+const RHYMES: &[&str] = &[
+    "a", "ac", "ach", "ai", "am", "an", "ang", "anh", "ao", "ap", "at", "au", "ay", "ăc", "ăm", "ăn", "ăng", "ăp", "ăt", "âc", "âm", "ân", "âng",
+    "âp", "ât", "âu", "ây", "e", "ec", "em", "en", "eng", "eo", "ep", "et", "ê", "êch", "êm", "ên", "ênh", "êp", "êt", "êu", "i", "ia", "ich", "im",
+    "in", "inh", "ip", "it", "iu", "iêc", "iêm", "iên", "iêng", "iêp", "iêt", "iêu", "y", "yêm", "yên", "yêt", "yêu", "o", "oc", "oi", "om", "on",
+    "ong", "op", "ot", "ooc", "oong", "ô", "ôc", "ôi", "ôm", "ôn", "ông", "ôp", "ôt", "ơ", "ơi", "ơm", "ơn", "ơp", "ơt", "u", "ua", "uc", "ui", "um",
+    "un", "ung", "up", "ut", "uôc", "uôi", "uôm", "uôn", "uông", "uôt", "ư", "ưa", "ưc", "ưi", "ưm", "ưng", "ưt", "ưu", "ươc", "ươi", "ươm", "ươn",
+    "ương", "ươp", "ươt", "ươu", "oa", "oac", "oach", "oai", "oam", "oan", "oang", "oanh", "oao", "oap", "oat", "oay", "oăc", "oăm", "oăn", "oăng",
+    "oăt", "oe", "oen", "oeo", "oet", "uân", "uâng", "uât", "uây", "uê", "uêch", "uênh", "uơ", "uy", "uych", "uynh", "uyp", "uyt", "uya", "uyên",
+    "uyêt", "uyu",
+];
+
+/// Is `word` spelled correctly in Vietnamese? Each of its syllables (a hyphen or apostrophe
+/// separates them) must be a Vietnamese syllable; a plain-ASCII word may also be an English one
+/// (`email`, `file` are everyday in Vietnamese text).
+pub fn is_correct(word: &str) -> bool {
+    let lower = word.to_lowercase();
+    if crate::in_user_dictionary(&lower) {
+        return true;
+    }
+    lower.split(['-', '\'', '’']).filter(|s| !s.is_empty()).all(syllable) || (word.is_ascii() && crate::is_correct(word))
+}
+
+/// Is `s` (lower case) one Vietnamese syllable? Tones and vowel marks may be precomposed (`ế`) or
+/// combining (`e` + U+0302 + U+0301).
+fn syllable(s: &str) -> bool {
+    let mut letters: Vec<char> = Vec::new();
+    let (mut tone, mut tones) = (0, 0);
+    for c in s.chars() {
+        let mark = match c {
+            '\u{0300}' => 1,
+            '\u{0301}' => 2,
+            '\u{0309}' => 3,
+            '\u{0303}' => 4,
+            '\u{0323}' => 5,
+            _ => 0,
+        };
+        if mark > 0 {
+            (tone, tones) = (mark, tones + 1);
+            continue;
+        }
+        if matches!(c, '\u{0302}' | '\u{0306}' | '\u{031B}') {
+            let Some(last) = letters.last_mut() else { return false };
+            *last = match (*last, c) {
+                ('a', '\u{0302}') => 'â',
+                ('e', '\u{0302}') => 'ê',
+                ('o', '\u{0302}') => 'ô',
+                ('a', '\u{0306}') => 'ă',
+                ('o', '\u{031B}') => 'ơ',
+                ('u', '\u{031B}') => 'ư',
+                _ => return false,
+            };
+            continue;
+        }
+        match VOWELS.iter().find_map(|v| Some((v.chars().next()?, v.chars().position(|x| x == c)?))) {
+            Some((base, t)) => {
+                letters.push(base);
+                if t > 0 {
+                    (tone, tones) = (t, tones + 1);
+                }
+            }
+            None if matches!(c, 'b' | 'c' | 'd' | 'đ' | 'g' | 'h' | 'k' | 'l' | 'm' | 'n' | 'p' | 'q' | 'r' | 's' | 't' | 'v' | 'x') => {
+                letters.push(c)
+            }
+            None => return false,
+        }
+    }
+    if tones > 1 {
+        return false;
+    }
+    let s: String = letters.into_iter().collect();
+    // Every onset that starts the syllable is tried: `gìn` is `g` + `in`, `gia` is `gi` + `a`.
+    ONSETS.iter().filter_map(|o| Some((*o, s.strip_prefix(o)?))).chain([("", s.as_str())]).any(|(onset, rhyme)| {
+        let front = rhyme.starts_with(['e', 'ê', 'i', 'y']);
+        let placed = match onset {
+            "k" | "gh" | "ngh" => front,
+            "c" | "ng" => !front,
+            "g" => !rhyme.starts_with(['e', 'ê', 'y']),
+            _ => true,
+        };
+        // After `qu` the `u` is the rhyme's glide: `quân` is `qu` + `ân` of `uân`, `quen` is `qu` + `en`.
+        let known = RHYMES.contains(&rhyme) || (onset == "qu" && RHYMES.contains(&format!("u{rhyme}").as_str()));
+        let stop = rhyme.ends_with(['c', 'p', 't']) || rhyme.ends_with("ch");
+        placed && known && (!stop || tone == 2 || tone == 5)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,6 +168,65 @@ mod tests {
         assert!(!looks_vietnamese("Mă duc acasă să mănânc cu fratele meu, că e târziu."));
         assert!(!looks_vietnamese("Đurđa i Đorđe su se vratili kući, a Đakovo je daleko."));
     }
+
+    #[test]
+    fn syllables() {
+        for w in [
+            "Việt",
+            "Nam",
+            "tiếng",
+            "nghiêng",
+            "người",
+            "những",
+            "quốc",
+            "quân",
+            "quen",
+            "quyết",
+            "Quỳnh",
+            "khuỷu",
+            "giường",
+            "gì",
+            "gìn",
+            "giếng",
+            "giữa",
+            "Nguyễn",
+            "học",
+            "đẹp",
+            "thuở",
+            "khuya",
+            "xoay",
+            "huỳnh",
+            "yêu",
+            "ước",
+            "ở",
+            "à",
+            "kỹ",
+            "kĩ",
+            "boong",
+            "hoạch",
+            "nguệch",
+            "khuấy",
+            "ngoằn",
+            "ngoèo",
+            "rượu",
+            "tie\u{0302}\u{0301}ng",
+            "nho\u{031B}",
+            "ĐẸP",
+            "Hà-Nội",
+        ] {
+            assert!(is_correct(w), "{w}");
+        }
+        // Wrong onset before the vowel, a stop without acute or dot below, an impossible rhyme,
+        // two tones, leftover Telex keys, letters Vietnamese doesn't use.
+        for w in ["nghành", "ngỉ", "cinh", "ghà", "kà", "gé", "hoc", "hòc", "tiep", "uong", "tooi", "ă", "hóà", "tieengs", "ddi", "vieejt", "fhá"]
+        {
+            assert!(!is_correct(w), "{w}");
+        }
+        // Everyday English words in Vietnamese text are let through.
+        for w in ["email", "file", "online"] {
+            assert!(is_correct(w), "{w}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -75,12 +234,18 @@ mod checker_tests {
     use crate::{Options, ProofLang, check_text_with};
 
     #[test]
-    fn vietnamese_paragraphs_under_english_get_no_marks() {
+    fn vietnamese_paragraphs_under_english_are_spelled_as_vietnamese() {
         let text = "Hôm nay tôi đi học, trời rất đẹp và mát mẻ.";
         let spans = [(0..text.len(), ProofLang::En)];
         assert!(check_text_with(text, &spans, &Options::default(), true).is_empty());
         // No language at all (the document default) behaves the same.
         assert!(check_text_with(text, &[], &Options::default(), true).is_empty());
+        // A slip is caught, in Vietnamese.
+        let text = "Hôm nay tôi đi hoc ở trường, ngành nghề rất đẹp.";
+        let issues = check_text_with(text, &[], &Options::default(), true);
+        let flagged: Vec<&str> = issues.iter().filter_map(|i| text.get(i.start..i.end)).collect();
+        assert_eq!(flagged, ["hoc"]);
+        assert!(issues.iter().all(|i| i.lang == ProofLang::Vi));
     }
 
     #[test]
