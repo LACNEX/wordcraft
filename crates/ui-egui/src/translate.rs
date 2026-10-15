@@ -1,7 +1,7 @@
 //! Review › Translate: a popup under the selection with its translation from Google Cloud
 //! Translation (v2), using the API key set in File › Options › Language. Nothing leaves the
 //! machine until the user asks for a translation; Insert puts it in place of the selection
-//! through `review.translate`, which agents can also run with a translation of their own.
+//! through `review.translateSelection`, which agents can also run with a translation of their own.
 
 use std::sync::{Arc, Mutex};
 
@@ -152,7 +152,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, viewport: Rect) {
                     // The popup doesn't block the page: Insert only replaces the text it translated.
                     let same = app.session.selected_text() == p.source;
                     if ui.add_enabled(same, crate::widgets::primary_button(ui, tl!("Insert"))).clicked() {
-                        close = app.run("review.translate", json!({"text": t})).is_ok();
+                        close = app.run("review.translateSelection", json!({"text": t})).is_ok();
                     }
                     if ui.button(tl!("Copy")).clicked() {
                         ui.ctx().copy_text(t);

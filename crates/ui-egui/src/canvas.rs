@@ -2866,7 +2866,7 @@ fn context_menu(app: &mut WordApp, ui: &mut Ui) {
         });
     }
     if !app.session.sel.is_collapsed() {
-        item(ui, app, "Translate", "review.translate", json!({}));
+        item(ui, app, "Translate", "review.translateSelection", json!({}));
     }
     item(ui, app, "Font…", "ui.dialog", json!({"name": "font"}));
     item(ui, app, "Paragraph…", "ui.dialog", json!({"name": "paragraph"}));

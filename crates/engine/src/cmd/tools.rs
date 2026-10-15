@@ -630,7 +630,7 @@ pub fn specs() -> Vec<CommandSpec> {
         ),
         // The app fetches the translation (the Translate popup); this puts it in place of the
         // selection, so agents that translate themselves use the same command.
-        CommandSpec::new("review.translate", "Translate", "Review › Language", |s, v| {
+        CommandSpec::new("review.translateSelection", "Translate", "Review › Language", |s, v| {
             let text = p::req_str(v, "text")?.to_string();
             super::type_text(s, &text)?;
             sel_result(s)
@@ -1865,10 +1865,10 @@ mod tests {
     #[test]
     fn translate_replaces_the_selection() {
         let mut s = Session::new(Document::from_text("Hello world"));
-        assert!(s.run("review.translate", &json!({"text": "Xin chào"})).is_err(), "nothing selected");
+        assert!(s.run("review.translateSelection", &json!({"text": "Xin chào"})).is_err(), "nothing selected");
         s.run("select.text", &json!({"text": "Hello"})).unwrap();
-        assert!(s.run("review.translate", &json!({})).is_err(), "no translation");
-        s.run("review.translate", &json!({"text": "Xin chào"})).unwrap();
+        assert!(s.run("review.translateSelection", &json!({})).is_err(), "no translation");
+        s.run("review.translateSelection", &json!({"text": "Xin chào"})).unwrap();
         assert_eq!(s.doc.plain_text(StoryRef::Body), "Xin chào world");
     }
 

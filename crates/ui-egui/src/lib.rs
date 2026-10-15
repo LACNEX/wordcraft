@@ -763,7 +763,7 @@ impl WordApp {
             self.ui.backstage_page = "recover".into();
         }
         // Translate without a translation opens the popup under the selection, which fetches one.
-        if id == "review.translate" && params.get("text").is_none() && widgets::enabled(self, id) {
+        if id == "review.translateSelection" && params.get("text").is_none() && widgets::enabled(self, id) {
             self.canvas.translate = Some(translate::Popup::new(self));
             return Ok(json!({"pending": "translate"}));
         }
