@@ -2247,3 +2247,6 @@
 # Reading Mode column widths (#1040)
 	Narrow	Уска
 	Medium	Средња
+	Google Cloud Translation API key:	API кључ за Google Cloud Translation:
+	Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it.	Додајте свој API кључ за Google Cloud Translation у Фајл › Опције › Језик. Изабрани текст се шаље Google-у ради превода.
+	Select less text: Translate takes up to {count} characters at a time.	Изаберите мање текста. Највише знакова које Преведи обрађује одједном: {count}.

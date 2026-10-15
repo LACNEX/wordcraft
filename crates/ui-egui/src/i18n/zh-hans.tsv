@@ -2245,3 +2245,6 @@
 # Reading Mode column widths (#1040)
 	Narrow	窄
 	Medium	中等
+	Google Cloud Translation API key:	Google Cloud Translation API 密钥：
+	Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it.	请在 文件 › 选项 › 语言 中添加你的 Google Cloud Translation API 密钥。所选文本会发送给 Google 进行翻译。
+	Select less text: Translate takes up to {count} characters at a time.	请少选一些文本：翻译每次最多处理 {count} 个字符。

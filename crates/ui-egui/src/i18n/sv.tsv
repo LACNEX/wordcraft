@@ -2647,3 +2647,6 @@ preview	Title	Titel
 	Bottom Right Cell	Nedre högra cellen
 	Inside Horizontal Border	Inre vågrät kantlinje
 	Inside Vertical Border	Inre lodrät kantlinje
+	Google Cloud Translation API key:	API-nyckel för Google Cloud Translation:
+	Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it.	Lägg till din API-nyckel för Google Cloud Translation under Arkiv › Alternativ › Språk. Den markerade texten skickas till Google för översättning.
+	Select less text: Translate takes up to {count} characters at a time.	Markera mindre text: Översätt hanterar högst {count} tecken åt gången.

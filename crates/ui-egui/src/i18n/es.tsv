@@ -2599,3 +2599,6 @@ preview	Title	Título
 # Reading Mode column widths (#1040)
 	Narrow	Estrecha
 	Medium	Media
+	Google Cloud Translation API key:	Clave de API de Google Cloud Translation:
+	Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it.	Añada su clave de API de Google Cloud Translation en Archivo › Opciones › Idioma. El texto seleccionado se envía a Google para traducirlo.
+	Select less text: Translate takes up to {count} characters at a time.	Seleccione menos texto: Traducir admite hasta {count} caracteres a la vez.

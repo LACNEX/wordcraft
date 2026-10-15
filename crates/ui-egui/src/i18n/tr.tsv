@@ -2629,3 +2629,6 @@ preview	Title	Örnek
 # Reading Mode column widths (#1040)
 	Narrow	Dar
 	Medium	Orta
+	Google Cloud Translation API key:	Google Cloud Translation API anahtarı:
+	Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it.	Google Cloud Translation API anahtarınızı Dosya › Seçenekler › Dil bölümünde ekleyin. Seçili metin çevrilmesi için Google'a gönderilir.
+	Select less text: Translate takes up to {count} characters at a time.	Daha az metin seçin: Çevir bir seferde en fazla {count} karakter işler.
