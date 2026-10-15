@@ -2,18 +2,23 @@
 //! the default English proofing language is spelled as Vietnamese (as Word's "detect language
 //! automatically" does), and spelling it.
 //!
-//! Spelling is by rule, not by dictionary: every Vietnamese word is written as syllables, and a
+//! Spelling is by syllable, not by word: every Vietnamese word is written as syllables, and a
 //! syllable is an onset (`ngh`, `tr`, `qu`…), a rhyme from the closed set of Vietnamese rhymes
 //! (`ương`, `oanh`, `uyêt`…) and at most one tone mark. The spelling rules on top: `k`, `gh` and
 //! `ngh` only before `i e ê y`, `c`, `g` and `ng` never before them, and a rhyme ending in a stop
 //! (`c ch p t`) takes only the acute or the dot below. That catches the common slips (`nghành`,
-//! `ngỉ`, `hoc`, leftover Telex keys like `tieengs`) without shipping a word list.
+//! `ngỉ`, `hoc`, leftover Telex keys like `tieengs`). The rules still allow syllables nobody writes
+//! (`quyêm`), so when a list of syllables in use is installed ([`SYLLABLES_FILE`] in a
+//! dictionaries folder, like a Hunspell dictionary) a syllable must also be on it. WordCraft doesn't
+//! ship one: a list extracted from the Vietnamese Wiktionary is CC BY-SA, so it stays with the user.
 //!
 //! The test is orthographic. Vietnamese writes most syllables with letters no other Latin-script
 //! language shares: the horn letters (`ơ ư`), `ĩ ũ`, and the tone-marked vowels of the Latin
 //! Extended Additional block (`ạ ả ấ ầ … ỹ`), precomposed or as combining hook above, dot below
 //! and horn. French and Portuguese share `â ê ô à é`, Romanian `ă` and Croatian, Serbian and
 //! Bosnian `đ`, so those alone don't count.
+
+use std::sync::{Arc, RwLock};
 
 /// Does `c` occur in Vietnamese words but (practically) nowhere else?
 fn vietnamese_letter(c: char) -> bool {
@@ -67,16 +72,77 @@ const RHYMES: &[&str] = &[
 /// separates them) must be a Vietnamese syllable; a plain-ASCII word may also be an English one
 /// (`email`, `file` are everyday in Vietnamese text).
 pub fn is_correct(word: &str) -> bool {
+    is_correct_with(word, &known())
+}
+
+/// [`is_correct`] against a given list of syllables in use (an empty one: the rules alone).
+fn is_correct_with(word: &str, known: &Syllables) -> bool {
     let lower = word.to_lowercase();
     if crate::in_user_dictionary(&lower) {
         return true;
     }
-    lower.split(['-', '\'', '’']).filter(|s| !s.is_empty()).all(syllable) || (word.is_ascii() && crate::is_correct(word))
+    lower.split(['-', '\'', '’']).filter(|s| !s.is_empty()).all(|s| syllable(s, known)) || (word.is_ascii() && crate::is_correct(word))
 }
 
-/// Is `s` (lower case) one Vietnamese syllable? Tones and vowel marks may be precomposed (`ế`) or
-/// combining (`e` + U+0302 + U+0301).
-fn syllable(s: &str) -> bool {
+/// The file name of a list of Vietnamese syllables in use, one per line (`#` starts a comment
+/// line), looked for in the same folders as Hunspell dictionaries.
+pub const SYLLABLES_FILE: &str = "vi-syllables.txt";
+
+/// Largest list read (Vietnamese writes fewer than 10,000 syllables, about 60 KB).
+const MAX_FILE: u64 = 4 << 20;
+
+/// Syllables keyed by toneless letters and tone, so decomposed input matches too.
+type Syllables = std::collections::HashSet<(String, usize)>;
+
+/// The installed list, read on first use; `None` until then or after [`reload_dictionary`].
+static KNOWN: RwLock<Option<Arc<Syllables>>> = RwLock::new(None);
+
+fn known() -> Arc<Syllables> {
+    if let Some(k) = KNOWN.read().unwrap_or_else(|e| e.into_inner()).clone() {
+        return k;
+    }
+    let k = Arc::new(installed_path().and_then(|p| load(&p)).unwrap_or_default());
+    *KNOWN.write().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&k));
+    k
+}
+
+/// Read a list from disk (size-capped); `None` when it can't be read.
+fn load(path: &std::path::Path) -> Option<Syllables> {
+    let len = std::fs::metadata(path).ok()?.len();
+    (len <= MAX_FILE).then(|| std::fs::read_to_string(path).ok()).flatten().map(|t| parse_list(&t))
+}
+
+/// The syllables of a list's text that keep the rules (others can never match a word anyway).
+fn parse_list(text: &str) -> Syllables {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter_map(|l| parse(&l.to_lowercase()))
+        .filter(|(s, t)| valid(s, *t))
+        .collect()
+}
+
+/// The installed list of syllables in use, searching the dictionaries folder and the system
+/// locations now; `None` when there is none (the rules alone check spelling).
+pub fn installed_path() -> Option<std::path::PathBuf> {
+    crate::hunspell::search_dirs(None).into_iter().map(|d| d.join(SYLLABLES_FILE)).find(|p| p.is_file())
+}
+
+/// Forget the loaded list, so the next check looks for an installed one again.
+pub fn reload_dictionary() {
+    *KNOWN.write().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// Is `s` (lower case) one Vietnamese syllable? The rules alone accept syllables nobody writes
+/// (`quyêm`), so with a list installed it must also be on it.
+fn syllable(s: &str, known: &Syllables) -> bool {
+    parse(s).is_some_and(|k| valid(&k.0, k.1) && (known.is_empty() || known.contains(&k)))
+}
+
+/// `s` (lower case) as its toneless letters and tone (0 none, 1 grave, 2 acute, 3 hook, 4 tilde,
+/// 5 dot below), or `None` if it isn't written with Vietnamese letters and at most one tone. Tones
+/// and vowel marks may be precomposed (`ế`) or combining (`e` + U+0302 + U+0301).
+fn parse(s: &str) -> Option<(String, usize)> {
     let mut letters: Vec<char> = Vec::new();
     let (mut tone, mut tones) = (0, 0);
     for c in s.chars() {
@@ -93,7 +159,7 @@ fn syllable(s: &str) -> bool {
             continue;
         }
         if matches!(c, '\u{0302}' | '\u{0306}' | '\u{031B}') {
-            let Some(last) = letters.last_mut() else { return false };
+            let last = letters.last_mut()?;
             *last = match (*last, c) {
                 ('a', '\u{0302}') => 'â',
                 ('e', '\u{0302}') => 'ê',
@@ -101,7 +167,7 @@ fn syllable(s: &str) -> bool {
                 ('a', '\u{0306}') => 'ă',
                 ('o', '\u{031B}') => 'ơ',
                 ('u', '\u{031B}') => 'ư',
-                _ => return false,
+                _ => return None,
             };
             continue;
         }
@@ -115,15 +181,17 @@ fn syllable(s: &str) -> bool {
             None if matches!(c, 'b' | 'c' | 'd' | 'đ' | 'g' | 'h' | 'k' | 'l' | 'm' | 'n' | 'p' | 'q' | 'r' | 's' | 't' | 'v' | 'x') => {
                 letters.push(c)
             }
-            None => return false,
+            None => return None,
         }
     }
-    if tones > 1 {
-        return false;
-    }
-    let s: String = letters.into_iter().collect();
+    (tones <= 1).then(|| (letters.into_iter().collect(), tone))
+}
+
+/// Do toneless letters `s` with `tone` follow the spelling rules: a known onset and rhyme, onsets
+/// placed by the vowel after them, and a stop only with the acute or dot below?
+fn valid(s: &str, tone: usize) -> bool {
     // Every onset that starts the syllable is tried: `gìn` is `g` + `in`, `gia` is `gi` + `a`.
-    ONSETS.iter().filter_map(|o| Some((*o, s.strip_prefix(o)?))).chain([("", s.as_str())]).any(|(onset, rhyme)| {
+    ONSETS.iter().filter_map(|o| Some((*o, s.strip_prefix(o)?))).chain([("", s)]).any(|(onset, rhyme)| {
         let front = rhyme.starts_with(['e', 'ê', 'i', 'y']);
         let placed = match onset {
             "k" | "gh" | "ngh" => front,
@@ -214,18 +282,37 @@ mod tests {
             "ĐẸP",
             "Hà-Nội",
         ] {
-            assert!(is_correct(w), "{w}");
+            assert!(is_correct_with(w, &Syllables::new()), "{w}");
         }
         // Wrong onset before the vowel, a stop without acute or dot below, an impossible rhyme,
         // two tones, leftover Telex keys, letters Vietnamese doesn't use.
         for w in ["nghành", "ngỉ", "cinh", "ghà", "kà", "gé", "hoc", "hòc", "tiep", "uong", "tooi", "ă", "hóà", "tieengs", "ddi", "vieejt", "fhá"]
         {
-            assert!(!is_correct(w), "{w}");
+            assert!(!is_correct_with(w, &Syllables::new()), "{w}");
         }
         // Everyday English words in Vietnamese text are let through.
         for w in ["email", "file", "online"] {
             assert!(is_correct(w), "{w}");
         }
+    }
+
+    #[test]
+    fn syllables_in_use() {
+        // Comments, blank lines and rule-breaking entries are skipped; case and decomposition don't matter.
+        let known = parse_list("# list\n\nhoà\nHòa\nQuý\nhoc\nquí\ntie\u{0302}\u{0301}ng\n");
+        // Both tone placements share a key: `hoà` and `hòa` are `hoa` with the grave.
+        assert_eq!(known.len(), 4);
+        for w in ["hoà", "hòa", "quý", "Quí", "tiếng"] {
+            assert!(is_correct_with(w, &known), "{w}");
+        }
+        // Rule-valid but not on the list; with no list the rules alone decide.
+        assert!(!is_correct_with("quyêm", &known) && is_correct_with("quyêm", &Syllables::new()));
+        // A list file is read; a missing one isn't.
+        let path = std::env::temp_dir().join(format!("wordcraft-{}-{SYLLABLES_FILE}", std::process::id()));
+        std::fs::write(&path, "nam\n").unwrap();
+        assert_eq!(load(&path), Some(Syllables::from([("nam".to_string(), 0)])));
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(load(&path), None);
     }
 }
 
