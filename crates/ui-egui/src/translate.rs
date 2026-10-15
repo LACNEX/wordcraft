@@ -21,8 +21,9 @@ type Answer = Arc<Mutex<Option<Result<String, String>>>>;
 
 /// The open popup.
 pub struct Popup {
-    /// The selected text when the popup opened.
+    /// The selected text when the popup opened, and where: selecting elsewhere closes the popup.
     source: String,
+    sel: wordcraft_engine::Selection,
     /// The interface language code translated into.
     to: String,
     /// Where it opens: under the selection, or the middle of the page area.
@@ -35,6 +36,7 @@ impl Popup {
         let to = Some(app.ui.translate_to.as_str()).filter(|c| Lang::all().any(|l| l.code() == *c)).map_or(i18n::current().code(), |c| c);
         Popup {
             source: app.session.selected_text(),
+            sel: app.session.sel.clone(),
             to: to.to_string(),
             at: app.canvas.mini_anchor.map(|r| r.left_bottom() + vec2(0.0, 8.0)),
             answer: None,
@@ -83,6 +85,9 @@ fn start(ctx: &egui::Context, key: &str, text: &str, to: &str) -> Answer {
 /// Draws the popup while it is open.
 pub fn show(app: &mut WordApp, ctx: &egui::Context, viewport: Rect) {
     let Some(mut p) = app.canvas.translate.take() else { return };
+    if app.session.sel != p.sel {
+        return;
+    }
     let key = app.ui.translate_key.trim().to_string();
     let too_long = p.source.chars().count() > MAX_CHARS;
     if p.answer.is_none() && !key.is_empty() && !too_long {
@@ -149,9 +154,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, viewport: Rect) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if let Some(t) = translation {
-                    // The popup doesn't block the page: Insert only replaces the text it translated.
-                    let same = app.session.selected_text() == p.source;
-                    if ui.add_enabled(same, crate::widgets::primary_button(ui, tl!("Insert"))).clicked() {
+                    if ui.add(crate::widgets::primary_button(ui, tl!("Insert"))).clicked() {
                         close = app.run("review.translateSelection", json!({"text": t})).is_ok();
                     }
                     if ui.button(tl!("Copy")).clicked() {

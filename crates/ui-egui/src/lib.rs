@@ -3753,6 +3753,25 @@ mod tests {
     }
 
     #[test]
+    fn translate_popup_closes_when_another_selection_is_made() {
+        let ctx = egui::Context::default();
+        let mut a = app();
+        a.run("text.insert", json!({"text": "Hello world"})).unwrap();
+        a.run("select.text", json!({"text": "Hello"})).unwrap();
+        a.run("review.translateSelection", json!({})).unwrap();
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+        let frame = |a: &mut WordApp| {
+            let input = egui::RawInput { screen_rect: Some(screen), ..Default::default() };
+            ctx.run_ui(input, |ui| translate::show(a, ui.ctx(), screen)).drop_without_applying_deltas();
+        };
+        frame(&mut a);
+        assert!(a.canvas.translate.is_some(), "open while its text stays selected");
+        a.run("select.text", json!({"text": "world"})).unwrap();
+        frame(&mut a);
+        assert!(a.canvas.translate.is_none(), "selecting other text closes it");
+    }
+
+    #[test]
     fn ui_inspect_keeps_the_translate_key_secret() {
         let mut a = app();
         a.ui.translate_key = "s3cret-key".into();
