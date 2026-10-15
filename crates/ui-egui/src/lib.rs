@@ -3752,6 +3752,14 @@ mod tests {
         assert_eq!(v["ok"], false, "y is required: {v}");
     }
 
+    #[test]
+    fn ui_inspect_keeps_the_translate_key_secret() {
+        let mut a = app();
+        a.ui.translate_key = "s3cret-key".into();
+        let v = control::inspect(&mut a, &egui::Context::default());
+        assert!(!v.to_string().contains("s3cret-key"), "{v}");
+    }
+
     /// Issue #123: zoomed out, pages sit side by side, and clicks map to the page under the pointer.
     #[test]
     fn zoomed_out_pages_sit_side_by_side_and_clicks_land_on_them() {
