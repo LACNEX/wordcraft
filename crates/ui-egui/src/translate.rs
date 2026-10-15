@@ -2,6 +2,7 @@
 //! Translation (v2), using the API key set in File › Options › Language. Nothing leaves the
 //! machine until the user asks for a translation; Insert puts it in place of the selection
 //! through `review.translateSelection`, which agents can also run with a translation of their own.
+//! Without a key, each word is looked up in the user's StarDict dictionaries instead (`stardict`).
 
 use std::sync::{Arc, Mutex};
 
@@ -29,13 +30,18 @@ pub struct Popup {
     /// Where it opens: under the selection, or the middle of the page area.
     at: Option<Pos2>,
     answer: Option<Answer>,
+    /// Without a key: each word with its dictionary entry, or `None` when no dictionary is installed.
+    offline: Option<Vec<(String, Option<String>)>>,
 }
 
 impl Popup {
     pub fn new(app: &WordApp) -> Popup {
         let to = Some(app.ui.translate_to.as_str()).filter(|c| Lang::all().any(|l| l.code() == *c)).map_or(i18n::current().code(), |c| c);
+        let source = app.session.selected_text();
+        let offline = if app.ui.translate_key.trim().is_empty() { crate::stardict::look_up(&source) } else { None };
         Popup {
-            source: app.session.selected_text(),
+            offline,
+            source,
             sel: app.session.sel.clone(),
             to: to.to_string(),
             at: app.canvas.mini_anchor.map(|r| r.left_bottom() + vec2(0.0, 8.0)),
@@ -105,6 +111,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, viewport: Rect) {
         .constrain_to(viewport)
         .default_width(360.0)
         .show(ctx, |ui| {
+            if !key.is_empty() {
             ui.horizontal(|ui| {
                 ui.label(tl!("Language"));
                 let name = Lang::all().find(|l| l.code() == p.to).map_or("", Lang::name);
@@ -118,12 +125,26 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, viewport: Rect) {
                     }
                 });
             });
+            }
             ui.add_space(4.0);
             let result = p.answer.as_ref().and_then(|a| a.lock().ok().and_then(|s| s.clone()));
             let mut translation = None;
-            if key.is_empty() {
+            let mut copy = None;
+            if let (true, Some(words)) = (key.is_empty(), &p.offline) {
+                egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                    for (word, entry) in words {
+                        ui.label(egui::RichText::new(word).strong());
+                        match entry {
+                            Some(e) => ui.add(egui::Label::new(e).selectable(true).wrap()),
+                            None => ui.weak("—"),
+                        };
+                        ui.add_space(4.0);
+                    }
+                });
+                copy = Some(words.iter().map(|(w, e)| format!("{w}: {}", e.as_deref().unwrap_or("—"))).collect::<Vec<_>>().join("\n"));
+            } else if key.is_empty() {
                 ui.label(tl!(
-                    "Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it."
+                    "Add your Google Cloud Translation API key in File › Options › Language. The selected text is sent to Google to translate it. Or, to look words up offline, put a StarDict dictionary (.ifo, .idx and .dict files) in the dictionaries folder in File › Options › Proofing."
                 ));
                 if ui.button(tl!("Options…")).clicked() {
                     app.ui.options_pane = "language".into();
@@ -147,19 +168,22 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context, viewport: Rect) {
                         egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
                             ui.add(egui::Label::new(&t).selectable(true).wrap());
                         });
+                        copy = Some(t.clone());
                         translation = Some(t);
                     }
                 }
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                if let Some(t) = translation {
-                    if ui.add(crate::widgets::primary_button(ui, tl!("Insert"))).clicked() {
-                        close = app.run("review.translateSelection", json!({"text": t})).is_ok();
-                    }
-                    if ui.button(tl!("Copy")).clicked() {
-                        ui.ctx().copy_text(t);
-                    }
+                if let Some(t) = translation
+                    && ui.add(crate::widgets::primary_button(ui, tl!("Insert"))).clicked()
+                {
+                    close = app.run("review.translateSelection", json!({"text": t})).is_ok();
+                }
+                if let Some(t) = copy
+                    && ui.button(tl!("Copy")).clicked()
+                {
+                    ui.ctx().copy_text(t);
                 }
                 if ui.button(tl!("Close")).clicked() {
                     close = true;
